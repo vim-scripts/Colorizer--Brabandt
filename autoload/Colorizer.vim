@@ -1,10 +1,11 @@
 " Plugin:       Highlight Colornames and Values
 " Maintainer:   Christian Brabandt <cb@256bit.org>
 " URL:          http://www.github.com/chrisbra/color_highlight
-" Last Change:  2012 Mar 02
+" Last Change: Thu, 15 Mar 2012 20:38:44 +0100
 " Licence:      No Warranties. Do whatever you want with this.
 "               But please tell me!
 " Version:      0.2
+" GetLatestVimScripts: 3963 3 :AutoInstall: Colorizer.vim
 "
 " This plugin was inspired by the css_color.vim plugin from Nikolaus Hofer.
 " Changes made: - make terminal colors work more reliably and with all
@@ -15,17 +16,12 @@
 "               - fix small bugs
 
 " Init some variables "{{{1
-" Plugin folklore "{{{2
-if v:version < 700 || exists("g:loaded_color_codes") || &cp
-  finish
-endif
-let g:loaded_color_codes = 1
-
 let s:cpo_save = &cpo
 set cpo&vim
 
 " enable debug functions
 let s:debug = 0
+
 "" the 6 value iterations in the xterm color cube "{{{2
 let s:valuerange6 = [ 0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF ]
 
@@ -897,14 +893,15 @@ let s:x11_color_names = {
 
 function! s:FGforBG(bg) "{{{1
    " takes a 6hex color code and returns a matching color that is visible
+   let fgc = g:colorizer_fgcontrast
    let pure = a:bg
    let r = '0x'.pure[0:1]+0
    let g = '0x'.pure[2:3]+0
    let b = '0x'.pure[4:5]+0
    if r*30 + g*59 + b*11 > 12000
-      return '#000000'
-   else
-      return '#ffffff'
+        return s:predefined_fgcolors['dark'][fgc]
+    else
+        return s:predefined_fgcolors['light'][fgc]
    end
 endfunction
 
@@ -926,9 +923,10 @@ function! s:DoHlGroup(clr) "{{{1
             return
         endif
     endif
-    let fg = s:FGforBG(a:clr)
-    let hi = printf('hi %s guifg=%s guibg=#%s', a:clr, 
-	    \ fg, a:clr)
+    let clr = a:clr
+    let fg = g:colorizer_fgcontrast < 0 ? '#'.clr : s:FGforBG(a:clr)
+    let hi = printf('hi %s guifg=%s guibg=#%s', clr, 
+	    \ fg, clr)
     if !has("gui_running")
 	let hi.= printf(' ctermfg=%s ctermbg=%s',
 	    \ s:Rgb2xterm(fg), s:Rgb2xterm(a:clr))
@@ -1008,64 +1006,6 @@ function! s:Xterm2rgb256(color)  "{{{1
    endif
    let rgb=[r,g,b]
    return rgb
-endfunction
-
-function! s:Rgb2xterm(color) "{{{1
-" selects the nearest xterm color for a rgb value like #FF0000
-" hard code values for 000000 and FFFFFF, they will be called many times
-" so make this fast
-    let color = (a:color[0] == '#' ? a:color[1:] : a:color)
-    if ( color == '000000')
-	return 0
-    elseif (color == 'FFFFFF')
-	return 15
-    else
-	let r = '0x'.color[0:1]+0
-	let g = '0x'.color[2:3]+0
-	let b = '0x'.color[4:5]+0
-
-        " Try exact match first
-        let i = index(s:colortable, [r, g, b])
-        if i > -1
-            return i
-        endif
-
-        " Grey scale ?
-        if ( r == g &&  r == b )
-            if &t_Co == 256
-                " 0 and 15 have already been take care of
-                if r < 5
-                    return 0 " black
-    "            elseif r == 127
-    "                return 8 " from 16 color xterm
-    "            elseif r == 229
-    "                return 7 " from 16 color xterm
-                elseif r > 244
-                    return 15 " white
-                endif
-                " grey cube starts at index 232
-                return 232+(r-5)/10
-            elseif &t_Co == 88
-                if r < 23
-                    return 0 " black
-                elseif r < 69
-                    return 80
-                elseif r > 250
-                    return 15 " white
-                else
-                    " should be good enough
-                    return 80 + (r-69)/23
-                endif
-            endif
-        endif
-
-        " Round to the next step in the xterm color cube
-        " euclidian distance would be needed,
-        " but this works good enough and is faster.
-        let round = s:RoundColor(r, g, b)
-        " Return closest match or -1 if not found
-        return index(s:colortable, round)
-    endif
 endfunction
 
 function! s:RoundColor(...) "{{{1
@@ -1151,12 +1091,12 @@ function! s:PreviewColorName(color) "{{{1
     return a:color
 endfu
 
-function! s:PreviewColorHex(match, ...) "{{{1
+function! s:PreviewColorHex(match) "{{{1
     let color = (a:match[0] == '#' ? a:match[1:] : a:match)
+    let pattern = color
     if len(color) == 3
         let color = substitute(color, '.', '&&', 'g')
     endif
-    let pattern = !a:0 ? color : a:1
     if &t_Co == 8 && !has("gui_running")
         " The first 12 color names, can be displayed by 8 color terminals
         let list = values(s:xterm_8colors)
@@ -1182,9 +1122,35 @@ function! s:GetMatchList() "{{{1
 endfunction
 
 function! s:Init(...) "{{{1
-    let s:force_hl = !empty(a:1)
+    " Cache old values
     if !exists("s:old_tCo")
         let s:old_tCo = &t_Co
+    endif
+
+    " foreground / background contrast
+    let s:predefined_fgcolors = {}
+    let s:predefined_fgcolors['dark']  = ['#444444', '#222222', '#000000']
+    let s:predefined_fgcolors['light'] = ['#bbbbbb', '#dddddd', '#ffffff']
+    if !exists('g:colorizer_fgcontrast')
+        " Default to black / white
+        let g:colorizer_fgcontrast = len(s:predefined_fgcolors['dark']) - 1
+    elseif g:colorizer_fgcontrast >= len(s:predefined_fgcolors['dark'])
+        echohl WarningMsg
+        echo "g:colorizer_fgcontrast value invalid, using default"
+        echohl None
+        let g:colorizer_fgcontrast = len(s:predefined_fgcolors['dark']) - 1
+    endif
+
+    if !exists("s:old_fgcontrast")
+        " if the value was changed since last time, 
+        " be sure to clear the old highlighting.
+        let s:old_fgcontrast = g:colorizer_fgcontrast
+    endif
+
+    let s:force_hl = !empty(a:1)
+    if !s:force_hl && s:old_fgcontrast != g:colorizer_fgcontrast
+        let s:force_hl = 1
+        let s:old_fgcontrast = g:colorizer_fgcontrast
     endif
     " User manually changed the &t_Co option, so reset it
     if s:old_tCo != &t_Co
@@ -1199,8 +1165,8 @@ function! s:Init(...) "{{{1
 	    let s:colortable = map(range(0,15), 's:Xterm2rgb16(v:val)')
         elseif &t_Co == 88
 	    let s:colortable = map(range(0,87), 's:Xterm2rgb88(v:val)')
-	" terminal with 256 colors:
-        elseif &t_Co == 256
+	" terminal with 256 colors or gVim
+        elseif &t_Co == 256 || empty(&t_Co)
 	    let s:colortable = map(range(0,255), 's:Xterm2rgb256(v:val)')
 	endif
         if s:debug && exists("s:colortable")
@@ -1208,14 +1174,14 @@ function! s:Init(...) "{{{1
         endif
         let s:init_css = 1
     elseif s:force_hl
-        call s:ColorOff()
+        call Colorizer#ColorOff()
     endif
     if has("gui_running") || &t_Co >= 8
 	" The list of available match() patterns
 	let s:match_list = s:GetMatchList()
 	" If the syntax highlighting got reset, force recreating it
-	if (empty(s:match_list) || !hlexists(s:match_list[0].group) || 
-	    \ empty(synIDattr(hlID(s:match_list[0].group), 'fg')))
+	if ((empty(s:match_list) || !hlexists(s:match_list[0].group) ||  
+	    \ empty(synIDattr(hlID(s:match_list[0].group), 'fg'))) && !s:force_hl)
 	    let s:force_hl = 1
 	endif
         if &t_Co > 16 || has("gui_running")
@@ -1231,63 +1197,6 @@ function! s:Init(...) "{{{1
     else
         throw "nocolor"
     endif
-endfu
-
-function! s:DoColor(force, line1, line2) "{{{1
-    " initialize plugin
-    try
-        call s:Init(a:force)
-    catch /nocolor/
-        " nothing to do
-        return
-    endtry
-
-    " too slow
-    "for name in keys(s:colors)
-    "    call s:PreviewColorName(name)
-    "endfor
-    
-    " too slow:
-    "for line in range(1,line('$'))
-    "    call s:ColorMatchingLines(line)
-    "endfor
-    let a=winsaveview()
-    let save = s:SaveRestoreOptions(1, {}, ['mod', 'ro', 'ma', 'lz'])
-    " highlight Hex Codes:
-    "
-    " The :%s command is a lot faster than this:
-    ":g/#\x\{3,6}\>/call s:ColorMatchingLines(line('.'))
-    let cmd = printf(':sil %d,%ds/#\x\{3,6}\>/'.
-        \ '\=s:PreviewColorHex(submatch(0))/egi', a:line1, a:line2)
-    exe cmd
-    if &t_Co > 16
-    " Also support something like
-    " CSS rgb(255,0,0)
-    "     rgba(255,0,0,1)
-    "     rgb(10%,0,100%)
-    "     hsl(0,100%,50%) -> hvl2rgb conversion RED
-    "     hsla(120,100%,50%,1) Lime
-    "     hsl(120,100%,25%) Darkgreen
-    "     hsl(120, 100%, 75%) lightgreen
-    "     hsl(120, 75%, 75%) pastelgreen
-        " highlight rgb(X,X,X) values
-        ":sil %s/rgba\?(\s*\%(\d\+%\?\D*\)\{3,4})/\=s:ColorRGBValues(submatch(0))/egi
-        let cmd = printf(':sil %d,%ds/rgba\=(\s*\%%(\d\+%%\?\D*\)\{3,4})/'. 
-            \ '\=s:ColorRGBValues(submatch(0))/egi', a:line1, a:line2)
-        exe cmd
-        " highlight hvl(X,X,X) values
-        let cmd = printf(':sil %d,%ds/hsla\=(\s*\%%(\d\+%%\?\D*\)\{3,4})'.
-            \'/\=s:ColorHSLValues(submatch(0))/egi', a:line1, a:line2)
-        exe cmd
-    endif
-    " highlight Colornames
-    "
-    let s_cmd =
-        \ printf(':sil %d,%ds/%s/\=s:PreviewColorName(submatch(0))/egi',
-        \ a:line1, a:line2, s:GetColorPattern(keys(s:colors)))
-    exe s_cmd
-    call s:SaveRestoreOptions(0, save, [])
-    call winrestview(a)
 endfu
 
 function! s:SaveRestoreOptions(save, dict, list) "{{{1
@@ -1344,23 +1253,6 @@ function! s:ColorRGBValues(val) "{{{1
     return a:val
 endfunction
 
-function! s:ColorHSLValues(val) "{{{1
-    " strip parantheses and split on comma
-    let hsl = s:StripParantheses(a:val)
-    if len(hsl) == 4
-        " drop alpha channel
-        call remove(hsl, 3)
-    endif
-    let hsl[0] = (hsl[0]+360)%360
-    let hsl[1] = (matchstr(hsl[1], '\d\+') + 0.0)/100
-    let hsl[2] = (matchstr(hsl[2], '\d\+') + 0.0)/100
-
-    "call s:PreviewColorHex(clr, a:val)
-    let str = s:HSL2RGB(hsl[0], hsl[1], hsl[2])
-    call s:SetMatcher(str, a:val)
-    return a:val
-endfunction
-
 function! s:HSL2RGB(h, s, l) "{{{1
     let s = a:s + 0.0
     let l = a:l + 0.0
@@ -1377,76 +1269,237 @@ function! s:HSL2RGB(h, s, l) "{{{1
 endfunction
 
 function! s:Hue2RGB(m1, m2, h) "{{{1
-    let h = a:h
-    if h < 60
-        let r = (a:m1 + (a:m2 - a:m1) * h / 60) * 255
-    elseif a:h <  180
-        let r = a:m2
-    elseif a:h < 240
-        let r = a:m1 + (a:m2 - a:m1)*(240 - h) / 60
-    else
-        let r = a:m1
+    let h = (a:h + 0.0)/255
+    if h < 0
+        let h = h + 1
+    elseif h > 1
+        let h = h -1 
     endif
-    let r = ( r < 0 ? 0 : r)
-    return float2nr(r*255)
+    if h * 6 < 1
+        let res = a:m1 + (a:m2 - a:m1) * h * 6
+    elseif h * 2 < 1
+        let res = a:m2
+    elseif h * 3 < 2
+        let res = a:m1 + (a:m2 - a:m1) * (2.0/3.0 - h) * 6
+    else
+       let res = a:m1
+    endif
+    return round(res * 255)
 endfunction
 
-function! s:ColorOff() "{{{1
+function! s:Modifylists(la, lb, op) "{{{1
+    if a:op == '+'
+        return [ a:la[0] + a:lb[0], 
+            \    a:la[1] + a:lb[1],
+            \    a:la[2] + a:lb[2]]
+    else
+        return [ a:la[0] - a:lb[0], 
+            \    a:la[1] - a:lb[1],
+            \    a:la[2] - a:lb[2]]
+    endif
+endfu
+
+function! s:Rgb2xterm(color) "{{{1
+" selects the nearest xterm color for a rgb value like #FF0000
+" hard code values for 000000 and FFFFFF, they will be called many times
+" so make this fast
+    if !exists("s:colortable")
+        call s:Init('')
+    endif
+    let color = (a:color[0] == '#' ? a:color[1:] : a:color)
+    if ( color == '000000')
+	return 0
+    elseif (color == 'FFFFFF')
+	return 15
+    else
+	let r = '0x'.color[0:1]+0
+	let g = '0x'.color[2:3]+0
+	let b = '0x'.color[4:5]+0
+
+        " Try exact match first
+        let i = index(s:colortable, [r, g, b])
+        if i > -1
+            return i
+        endif
+
+        " Grey scale ?
+        if ( r == g &&  r == b )
+            if &t_Co == 256
+                " 0 and 15 have already been take care of
+                if r < 5
+                    return 0 " black
+    "            elseif r == 127
+    "                return 8 " from 16 color xterm
+    "            elseif r == 229
+    "                return 7 " from 16 color xterm
+                elseif r > 244
+                    return 15 " white
+                endif
+                " grey cube starts at index 232
+                return 232+(r-5)/10
+            elseif &t_Co == 88
+                if r < 23
+                    return 0 " black
+                elseif r < 69
+                    return 80
+                elseif r > 250
+                    return 15 " white
+                else
+                    " should be good enough
+                    return 80 + (r-69)/23
+                endif
+            endif
+        endif
+
+        " Round to the next step in the xterm color cube
+        " euclidian distance would be needed,
+        " but this works good enough and is faster.
+        let round = s:RoundColor(r, g, b)
+        " Return closest match or -1 if not found
+        return index(s:colortable, round)
+    endif
+endfunction
+
+" Autoloadable functions
+function! Colorizer#ColorToggle() "{{{1
+    if !exists("s:match_list") || empty(s:match_list)
+        call Colorizer#DoColor(0, 1, line('$'))
+    else
+        call Colorizer#ColorOff()
+    endif
+endfu
+
+function! Colorizer#ColorOff() "{{{1
     for _match in s:GetMatchList()
         sil! call matchdelete(_match.id)
     endfor
+    unlet! s:match_list
 endfu
 
-function! s:AutoCmds(enable) "{{{1
+function! Colorizer#DoColor(force, line1, line2) "{{{1
+    " initialize plugin
+    try
+        call s:Init(a:force)
+    catch /nocolor/
+        " nothing to do
+        return
+    endtry
+
+    " too slow
+    "for name in keys(s:colors)
+    "    call s:PreviewColorName(name)
+    "endfor
+    
+    " too slow:
+    "for line in range(1,line('$'))
+    "    call s:ColorMatchingLines(line)
+    "endfor
+    let a=winsaveview()
+    let save = s:SaveRestoreOptions(1, {}, ['mod', 'ro', 'ma', 'lz'])
+    " highlight Hex Codes:
+    "
+    " The :%s command is a lot faster than this:
+    ":g/#\x\{3,6}\>/call s:ColorMatchingLines(line('.'))
+    " Should color #FF0000
+    "              #F0F
+    "              #FFF
+    let cmd = printf(':sil %d,%ds/#\x\{3,6}\>/'.
+        \ '\=s:PreviewColorHex(submatch(0))/egi', a:line1, a:line2)
+    exe cmd
+    if &t_Co > 16 || has("gui_running")
+    " Also support something like
+    " CSS rgb(255,0,0)
+    "     rgba(255,0,0,1)
+    "     rgb(10%,0,100%)
+    "     hsl(0,100%,50%) -> hvl2rgb conversion RED
+    "     hsla(120,100%,50%,1) Lime
+    "     hsl(120,100%,25%) Darkgreen
+    "     hsl(120, 100%, 75%) lightgreen
+    "     hsl(120, 75%, 75%) pastelgreen
+        " highlight rgb(X,X,X) values
+        ":sil %s/rgba\?(\s*\%(\d\+%\?\D*\)\{3,4})/\=s:ColorRGBValues(submatch(0))/egi
+        let cmd = printf(':sil %d,%ds/rgba\=(\s*\%%(\d\+%%\?\D*\)\{3,4})/'. 
+            \ '\=s:ColorRGBValues(submatch(0))/egi', a:line1, a:line2)
+        exe cmd
+        " highlight hvl(X,X,X) values
+        let cmd = printf(':sil %d,%ds/hsla\=(\s*\%%(\d\+%%\?\D*\)\{3,4})'.
+            \'/\=Colorizer#ColorHSLValues(submatch(0))/egi', a:line1, a:line2)
+        exe cmd
+    endif
+    " highlight Colornames
+    "
+    let s_cmd =
+        \ printf(':sil %d,%ds/%s/\=s:PreviewColorName(submatch(0))/egi',
+        \ a:line1, a:line2, s:GetColorPattern(keys(s:colors)))
+    exe s_cmd
+    call s:SaveRestoreOptions(0, save, [])
+    call winrestview(a)
+endfu
+
+function! Colorizer#ColorHSLValues(val) "{{{1
+    " strip parantheses and split on comma
+    let hsl = s:StripParantheses(a:val)
+    if len(hsl) == 4
+        " drop alpha channel
+        call remove(hsl, 3)
+    endif
+    let hsl[0] = (hsl[0]+360)%360
+    let hsl[1] = (matchstr(hsl[1], '\d\+') + 0.0)/100
+    let hsl[2] = (matchstr(hsl[2], '\d\+') + 0.0)/100
+
+    let str = s:HSL2RGB(hsl[0], hsl[1], hsl[2])
+    call s:SetMatcher(str, a:val)
+    return a:val
+endfu
+
+function! Colorizer#RGB2Term(arg) "{{{1
+    let color  = a:arg[0] == '#' ? a:arg : '#'. a:arg
+    let tcolor = s:Rgb2xterm(color)
+    call s:DoHlGroup(color[1:])
+    exe "echohl" color[1:]
+    echo a:arg. " => ". tcolor
+    echohl None
+endfu
+
+function! Colorizer#AutoCmds(enable) "{{{1
     if a:enable
-        aug ColorCodes
+        aug Colorizer
             au!
-            au CursorHold,CursorHoldI,InsertLeave * silent call s:DoColor('',
-                        \ line('.'), line('.'))
-            au BufEnter * silent call s:DoColor('', 1, line('$'))
-            au ColorScheme * silent call s:DoColor('!', 1, line('$'))
+            au CursorHold,CursorHoldI,InsertLeave * silent call
+                        \ Colorizer#DoColor('', line('.'), line('.'))
+            au BufEnter * silent call Colorizer#DoColor('', 1, line('$'))
+            au ColorScheme * silent call Colorizer#DoColor('!', 1, line('$'))
         aug END
     else
-        aug ColorCodes
+        aug Colorizer
             au!
         aug END
-        aug! ColorCodes
+        aug! Colorizer
     endif
 endfu
 
-function! s:SetUp() "{{{1
-    call s:Init("")
-    if exists("g:auto_color") && g:auto_color == 1
-        call s:AutoCmds(1)
+function! Colorizer#SwitchContrast() "{{{1
+    " make sure, g:colorizer_fgcontrast is set up
+    call s:Init(0)
+    let g:colorizer_fgcontrast-=1
+    if g:colorizer_fgcontrast < -1
+        let g:colorizer_fgcontrast = len(s:predefined_fgcolors['dark']) - 1
     endif
-    call s:Commands()
+    call Colorizer#DoColor(1, 1, line('$'))
 endfu
 
-function! s:Commands() "{{{1
-    " define commands
-    command! -bang -range=%  ColorCodes
-            \ :call s:DoColor(<q-bang>, <q-line1>, <q-line2>)
-    command! -bang  NoColor    :call s:ColorOff()
-    command! -nargs=1 Rgb2Xterm  :echo s:Rgb2xterm(<q-args>)
-    command! -nargs=1 HSL2RGB  :echo s:ColorHSLValues(<q-args>)
-endfu
-
-" Setup everything
-call s:SetUp()
-
-" DEBUG TEST "{{{2
+" DEBUG TEST "{{{1
 if !s:debug
     let &cpo = s:cpo_save
     unlet s:cpo_save
     finish
 endif
 
-
-fu! Test1()
+fu! Test1() "{{{2
     return map(range(0,254), 's:Xterm2rgb256(v:val)')
 endfu
 "
-fu! Test2()
+fu! Test2() "{{{2
     let list=[]
     for c in range(0, 254)
         let css_color = s:Xterm2rgb256(c)
@@ -1455,7 +1508,8 @@ fu! Test2()
    return list
 endfu
 
-function! s:ColorMatchingLines(line) "{{{1
+
+function! s:ColorMatchingLines(line) "{{{2
     " Programmatic approach to highlight all hex values as colors.
     " Surprisingly a lot slower than calling 
     " :s/#\x\{3,6}/\=s:ColorMatchingLines1(submatch(0))/g
@@ -1471,18 +1525,6 @@ function! s:ColorMatchingLines(line) "{{{1
 	    let cnt  += 1
 	endif
     endw
-endfu
-
-function! s:Modifylists(la, lb, op) "{{{1
-    if a:op == '+'
-        return [ a:la[0] + a:lb[0], 
-            \    a:la[1] + a:lb[1],
-            \    a:la[2] + a:lb[2]]
-    else
-        return [ a:la[0] - a:lb[0], 
-            \    a:la[1] - a:lb[1],
-            \    a:la[2] - a:lb[2]]
-    endif
 endfu
 
 " Plugin folklore and Vim Modeline " {{{1
