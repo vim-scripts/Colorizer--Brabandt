@@ -1,18 +1,17 @@
 " Plugin:       Highlight Colornames and Values
 " Maintainer:   Christian Brabandt <cb@256bit.org>
 " URL:          http://www.github.com/chrisbra/color_highlight
-" Last Change: Thu, 15 Mar 2012 20:38:44 +0100
-" Licence:      No Warranties. Do whatever you want with this.
-"               But please tell me!
-" Version:      0.3
-" GetLatestVimScripts: 3963 3 :AutoInstall: Colorizer.vim
+" Last Change: Fri, 23 Mar 2012 21:14:16 +0100
+" Licence:      Vim License (see :h License)
+" Version:      0.4
+" GetLatestVimScripts: 3963 4 :AutoInstall: Colorizer.vim
 "
 " This plugin was inspired by the css_color.vim plugin from Nikolaus Hofer.
 " Changes made: - make terminal colors work more reliably and with all
 "                 color terminals
 "               - performance improvements, coloring is almost instantenously
 "               - detect rgb colors like this: rgb(R,G,B)
-"               - detect hvl coloring: hvl(H,V,L)
+"               - detect hsl coloring: hsl(H,V,L)
 "               - fix small bugs
 
 " Init some variables "{{{1
@@ -31,10 +30,42 @@ command! -bang -range=%  ColorHighlight
 command! -bang -nargs=1  RGB2Xterm  
         \ :call Colorizer#RGB2Term(<q-args>)
 
-command! -bang    ColorClear  :call Colorizer#ColorOff()
-command! -bang    ColorToggle :call Colorizer#ColorToggle()
-command! -nargs=1 HSL2RGB     :echo Colorizer#ColorHSLValues(<q-args>)
+command! -bang    ColorClear    :call Colorizer#ColorOff()
+command! -bang    ColorToggle   :call Colorizer#ColorToggle()
+command! -nargs=1 HSL2RGB       :echo Colorizer#ColorHSLValues(<q-args>)
 command!          ColorContrast :call Colorizer#SwitchContrast()
+command!          ColorSwapFgBg :call Colorizer#SwitchFGBG()
+
+" define mappings "{{{1
+nnoremap <Plug>Colorizer        :<C-U>ColorToggle<CR>
+xnoremap <Plug>Colorizer        :ColorHighlight<CR>
+nnoremap <Plug>ColorContrast    :<C-U>ColorContrast<CR>
+xnoremap <Plug>ColorContrast    :<C-U>ColorContrast<CR>
+nnoremap <Plug>ColorFgBg        :<C-U>ColorSwapFgBg<CR>
+xnoremap <Plug>ColorFgBg        :<C-U>ColorSwapFgBg<CR>
+
+nmap <silent> <Leader>cC <Plug>Colorizer
+xmap <silent> <Leader>cC <Plug>Colorizer
+nmap <silent> <Leader>cT <Plug>ColorContrast
+xmap <silent> <Leader>cT <Plug>ColorContrast
+nmap <silent> <Leader>cF <Plug>ColorFgBg
+xmap <silent> <Leader>cF <Plug>ColorFgBg
+
+" Enable Autocommands "{{{1
+if exists("g:colorizer_auto_color")
+    " Prevent autoloading
+    exe "call Colorizer#AutoCmds(g:colorizer_auto_color)"
+endif
+
+if exists("g:colorizer_auto_filetype")
+    " Setup some autocommands for specific filetypes.
+    aug FT_ColorizerPlugin
+        au!
+        exe "au Filetype" g:colorizer_auto_filetype 
+                    \ "call Colorizer#LocalFTAutoCmds(1)\|
+                    \ :ColorHighlight"
+    aug END
+endif
 
 " Plugin folklore and Vim Modeline " {{{1
 let &cpo = s:cpo_save
