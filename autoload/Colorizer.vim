@@ -1,10 +1,10 @@
 " Plugin:       Highlight Colornames and Values
 " Maintainer:   Christian Brabandt <cb@256bit.org>
 " URL:          http://www.github.com/chrisbra/color_highlight
-" Last Change: Fri, 23 Mar 2012 21:14:16 +0100
+" Last Change: Tue, 03 Apr 2012 15:19:30 +0200
 " Licence:      Vim License (see :h License)
-" Version:      0.4
-" GetLatestVimScripts: 3963 4 :AutoInstall: Colorizer.vim
+" Version:      0.5
+" GetLatestVimScripts: 3963 5 :AutoInstall: Colorizer.vim
 "
 " This plugin was inspired by the css_color.vim plugin from Nikolaus Hofer.
 " Changes made: - make terminal colors work more reliably and with all
@@ -941,7 +941,15 @@ function! s:DoHlGroup(clr) "{{{1
         let bg = bg != 'NONE' ? s:Rgb2xterm(bg) : bg
 	let hi.= printf(' ctermfg=%s ctermbg=%s', fg, bg)
     endif
-    exe hi
+    "Don't error out for invalid colors
+    try 
+        exe hi
+    catch 
+        " Only report errors, when debugging info is turned on
+        if s:debug
+            call s:Warn("Invalid color: ".hi)
+        endif
+    endtry
 endfunction
 
 function! s:SetMatcher(clr, pattern) "{{{1
@@ -1154,6 +1162,10 @@ function! s:Init(...) "{{{1
     " Enable Autocommands
     if exists("g:colorizer_auto_color")
         call Colorizer#AutoCmds(g:colorizer_auto_color)
+    endif
+
+    if exists("g:colorizer_debug")
+        let s:debug = 1
     endif
 
     " foreground / background contrast
@@ -1467,7 +1479,6 @@ function! Colorizer#DoColor(force, line1, line2) "{{{1
     "    call s:ColorMatchingLines(line)
     "endfor
     let _a   = winsaveview()
-    let _cnr = changenr()
     let save = s:SaveRestoreOptions(1, {}, ['mod', 'ro', 'ma', 'lz'])
     " highlight Hex Codes:
     "
@@ -1477,7 +1488,7 @@ function! Colorizer#DoColor(force, line1, line2) "{{{1
     "              #F0F
     "              #FFF
     "call s:ColorMatchingLines()
-    let cmd = printf(':sil %d,%ds/#\x\{3,6}\>/'.
+    let cmd = printf(':sil %d,%ds/#\%(\x\{3}\|\x\{6}\)\>/'.
         \ '\=s:PreviewColorHex(submatch(0))/egi', a:line1, a:line2)
     exe cmd
     if &t_Co > 16 || has("gui_running")
@@ -1508,9 +1519,6 @@ function! Colorizer#DoColor(force, line1, line2) "{{{1
         exe s_cmd
     endif
     call s:SaveRestoreOptions(0, save, [])
-    if _cnr < changenr() && _cnr > 0
-        exe 'sil'. _cnr. 'u'
-    endif
     call winrestview(_a)
 endfu
 
