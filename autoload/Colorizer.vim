@@ -1,10 +1,10 @@
 " Plugin:       Highlight Colornames and Values
 " Maintainer:   Christian Brabandt <cb@256bit.org>
 " URL:          http://www.github.com/chrisbra/color_highlight
-" Last Change: Thu, 17 May 2012 21:03:52 +0200
+" Last Change: Wed, 25 Jul 2012 22:37:23 +0200
 " Licence:      Vim License (see :h License)
-" Version:      0.6
-" GetLatestVimScripts: 3963 6 :AutoInstall: Colorizer.vim
+" Version:      0.7
+" GetLatestVimScripts: 3963 7 :AutoInstall: Colorizer.vim
 "
 " This plugin was inspired by the css_color.vim plugin from Nikolaus Hofer.
 " Changes made: - make terminal colors work more reliably and with all
@@ -1281,7 +1281,12 @@ function! s:SaveRestoreOptions(save, dict, list) "{{{1
         return s:SaveOptions(a:list)
     else
 	for [key, value] in items(a:dict)
-	    call setbufvar('', '&'. key, value)
+            if key !~ '@'
+                call setbufvar('', '&'. key, value)
+            else
+                call call('setreg', [key[1]] + value)
+            endif
+            unlet value
 	endfor
     endif
 endfun
@@ -1289,20 +1294,30 @@ endfun
 function! s:SaveOptions(list) "{{{1
     let save = {}
     for item in a:list
-        exe "let save.". item. " = &l:". item
+        if item !~ '^@'
+            exe "let save.". item. " = &l:". item
+        else
+            let save[item] = []
+            call add(save[item], getreg(item[1]))
+            call add(save[item], getregtype(item))
+        endif
 	if item == 'ma' && !&l:ma
 	    setl ma
 	elseif item == 'ro' && &l:ro
 	    setl noro
 	elseif item == 'lz' && &l:lz
 	    setl lz
+        elseif item == 'ed' && &g:ed
+            setl noed
+        elseif item == 'gd' && &g:gd
+            setl nogd
 	endif
     endfor
     return save
 endfunction
 
 function! s:StripParentheses(val) "{{{1
-    return split(matchstr(a:val, '^\(hsl\|rgb\)a\?\s*(\zs[^)]*\ze)'), '\s*,')
+    return split(matchstr(a:val, '^\(hsl\|rgb\)a\?\s*(\zs[^)]*\ze)'), '\s*,\s*')
 endfunction
 
 function! s:ColorRGBValues(val) "{{{1
@@ -1539,7 +1554,7 @@ function! Colorizer#DoColor(force, line1, line2) "{{{1
     "    call s:ColorMatchingLines(line)
     "endfor
     let _a   = winsaveview()
-    let save = s:SaveRestoreOptions(1, {}, ['mod', 'ro', 'ma', 'lz'])
+    let save = s:SaveRestoreOptions(1, {}, ['mod', 'ro', 'ma', 'lz', 'ed', 'gd', '@/'])
     " highlight Hex Codes:
     "
     " The :%s command is a lot faster than this:
@@ -1577,6 +1592,9 @@ function! Colorizer#DoColor(force, line1, line2) "{{{1
             \ printf(':sil %d,%ds/%s/\=s:PreviewColorName(submatch(0))/egi',
             \ a:line1, a:line2, s:GetColorPattern(keys(s:colors)))
         exe s_cmd
+        " Somehow, when performing above search, the pattern remains in the
+        " search history and this can be disturbing, so delete it from there.
+        call histdel('/', -1)
     endif
     call s:SaveRestoreOptions(0, save, [])
     call winrestview(_a)
