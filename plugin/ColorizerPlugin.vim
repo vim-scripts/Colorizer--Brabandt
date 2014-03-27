@@ -1,10 +1,10 @@
 " Plugin:       Highlight Colornames and Values
 " Maintainer:   Christian Brabandt <cb@256bit.org>
 " URL:          http://www.github.com/chrisbra/color_highlight
-" Last Change: Wed, 14 Aug 2013 22:13:54 +0200
+" Last Change: Thu, 27 Mar 2014 23:12:43 +0100
 " Licence:      Vim License (see :h License)
-" Version:      0.9
-" GetLatestVimScripts: 3963 9 :AutoInstall: Colorizer.vim
+" Version:      0.10
+" GetLatestVimScripts: 3963 10 :AutoInstall: Colorizer.vim
 "
 " This plugin was inspired by the css_color.vim plugin from Nikolaus Hofer.
 " Changes made: - make terminal colors work more reliably and with all
@@ -32,8 +32,9 @@ endfu
 " define commands "{{{1
 command! -bang -range=%  -nargs=? -complete=custom,ColorHiArgs ColorHighlight
         \ :call Colorizer#DoColor(<q-bang>, <q-line1>, <q-line2>, <q-args>)
-command! -bang -nargs=1  RGB2Xterm  
+command! -bang -nargs=1  RGB2Term  
         \ :call Colorizer#RGB2Term(<q-args>)
+command! -nargs=1  Term2RGB     :call Colorizer#Term2RGB(<q-args>)
 
 command! -bang    ColorClear    :call Colorizer#ColorOff()
 command! -bang    ColorToggle   :call Colorizer#ColorToggle()
@@ -49,12 +50,28 @@ xnoremap <Plug>ColorContrast    :<C-U>ColorContrast<CR>
 nnoremap <Plug>ColorFgBg        :<C-U>ColorSwapFgBg<CR>
 xnoremap <Plug>ColorFgBg        :<C-U>ColorSwapFgBg<CR>
 
-nmap <silent> <Leader>cC <Plug>Colorizer
-xmap <silent> <Leader>cC <Plug>Colorizer
-nmap <silent> <Leader>cT <Plug>ColorContrast
-xmap <silent> <Leader>cT <Plug>ColorContrast
-nmap <silent> <Leader>cF <Plug>ColorFgBg
-xmap <silent> <Leader>cF <Plug>ColorFgBg
+if get(g:, 'colorizer_auto_map', 0)
+    " only map, if the mapped keys are not yet taken by a different plugin
+    " and the user hasn't mapped the function to different keys
+    if empty(maparg('<Leader>cC', 'n')) && empty(hasmapto('<Plug>Colorizer', 'n'))
+        nmap <silent> <Leader>cC <Plug>Colorizer
+    endif
+    if empty(maparg('<Leader>cC', 'x')) && empty(hasmapto('<Plug>Colorizer', 'x'))
+        xmap <silent> <Leader>cC <Plug>Colorizer
+    endif
+    if empty(maparg('<Leader>cT', 'n')) && empty(hasmapto('<Plug>ColorContrast', 'n'))
+        nmap <silent> <Leader>cT <Plug>ColorContrast
+    endif
+    if empty(maparg('<Leader>cT', 'x')) && empty(hasmapto('<Plug>ColorContrast', 'n'))
+        xmap <silent> <Leader>cT <Plug>ColorContrast
+    endif
+    if empty(maparg('<Leader>cF', 'n')) && empty(hasmapto('<Plug>ColorFgBg', 'n'))
+        nmap <silent> <Leader>cF <Plug>ColorFgBg
+    endif
+    if empty(maparg('<Leader>cF', 'x')) && empty(hasmapto('<Plug>ColorFgBg', 'x'))
+        xmap <silent> <Leader>cF <Plug>ColorFgBg
+    endif
+endif
 
 " Enable Autocommands "{{{1
 if exists("g:colorizer_auto_color")
